@@ -1,7 +1,8 @@
 #include <Python.h>
 #include <map>
 #include <cstdio>
-
+#include <sparsehash/dense_hash_map>
+#include <sparsehash/sparse_hash_map>
 
 static PyObject *
 greet_name(PyObject *self, PyObject *args)
@@ -18,19 +19,122 @@ greet_name(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+class Map {
+public:
+    virtual ~Map() {};
+    virtual ssize_t size() = 0;
+    virtual PyObject* get(PyObject* key) = 0;
+    virtual void put(PyObject *key, PyObject *val) = 0;
+};
+
+template <typename T>
+T from_pyobj(PyObject* val);
+
+template <>
+long long from_pyobj(PyObject* val) {
+    return PyLong_AsLongLong(val);
+}
+
+template <typename T>
+PyObject* to_pyobj(T val);
+
+template <>
+PyObject* to_pyobj(long long val) {
+    return PyLong_FromLongLong(val);
+}
+
+template<typename K, typename V>
+class MapImpl : public Map {
+public:
+    // typedef std::map<K, V> MapType;
+    // typedef google::dense_hash_map<K, V> MapType;
+    typedef google::sparse_hash_map<K, V> MapType;
+    typedef typename MapType::iterator MapIterator;
+
+    MapImpl() {
+        // _map.set_empty_key((K)-1);
+    }
+
+    virtual ssize_t size() {
+        return _map.size();
+    }
+
+    virtual PyObject* get(PyObject* key) {
+        K intkey = from_pyobj<K>(key);
+        MapIterator it = _map.find(intkey);
+        if (it == _map.end()) {
+            return NULL;
+        }
+        return to_pyobj<V>(it->second);
+    }
+
+    virtual void put(PyObject *key, PyObject *val) {
+        K intkey = from_pyobj<K>(key);
+        V intval = from_pyobj<V>(val);
+        _map[intkey] = intval;
+    }
+
+private:
+    MapType _map;
+};
+
+template<typename K>
+class MapImpl<K, PyObject*> : public Map {
+public:
+    // typedef std::map<K, PyObject*> MapType;
+    // typedef google::dense_hash_map<K, PyObject*> MapType;
+    typedef google::sparse_hash_map<K, PyObject*> MapType;
+    typedef typename MapType::iterator MapIterator;
+
+    MapImpl() {
+        // _map.set_empty_key((K)-1);
+    }
+
+    virtual ~MapImpl() {
+        for(MapIterator it=_map.begin(); it != _map.end(); ++it) {
+            Py_DECREF(it->second);
+        }
+    }
+
+    virtual ssize_t size() {
+        return _map.size();
+    }
+
+    virtual PyObject* get(PyObject* key) {
+        K intkey = from_pyobj<K>(key);
+        MapIterator it = _map.find(intkey);
+        if (it == _map.end()) {
+            return NULL;
+        }
+        return it->second;
+    }
+
+    virtual void put(PyObject *key, PyObject *val) {
+        K intkey = from_pyobj<K>(key);
+        Py_INCREF(val);
+        _map[intkey] = val;
+    }
+
+private:
+    MapType _map;
+};
+
 typedef struct {
     PyObject_HEAD
-    std::map<int64_t, int64_t>* map;
+    Map* map;
 } pyhash_IIMapObject;
 
 static int *
 IIMap_init(pyhash_IIMapObject *self, PyObject *args, PyObject *kwds) 
 {
-    std::printf("init\n");
-    self->map = new std::map<int64_t,int64_t>();
-    std::printf("map %p\n", self->map);
+    int keytype, valtype;
+    PyArg_ParseTuple(args, "CC", &keytype, &valtype);
+    if (keytype == 'L' && valtype == 'L') {
+        self->map = new MapImpl<long long, long long>();
+    } else if (keytype == 'L' && valtype == 'O') {
+        self->map = new MapImpl<long long, PyObject*>();
+    }
 }
-
 
 static void
 IIMap_dealloc(pyhash_IIMapObject* self)
@@ -44,26 +148,40 @@ Py_ssize_t IIMap_size(pyhash_IIMapObject* self) {
 }
 
 PyObject* IIMap_getitem(pyhash_IIMapObject *self, PyObject *key) {
-    int64_t intkey = PyLong_AsLongLong(key);
-    std::map<int64_t, int64_t>::const_iterator it = self->map->find(intkey);
-    if (it == self->map->end()) {
+    PyObject* val = self->map->get(key);
+    if (!val) {
         PyErr_SetObject(PyExc_KeyError, key);
-        return NULL;
     }
-    return PyLong_FromLongLong((*(self->map))[intkey]);
+    return val;
 }
 
 int IIMap_setitem(pyhash_IIMapObject *self, PyObject *key, PyObject *val) {
-    int64_t intkey = PyLong_AsLongLong(key);
-    int64_t intval = PyLong_AsLongLong(val);
-    (*self->map)[intkey] = intval;
+    self->map->put(key, val);
     return 0;
 }
+
+// Broken
+// static PyObject*
+// IIMap_get(pyhash_IIMapObject* self, PyObject *args) {
+//     PyObject* key = NULL;
+//     PyObject* alternative = NULL;
+//     PyArg_ParseTuple(args, "O|O", key, alternative);
+//     PyObject* val = self->map->get(key);
+//     if (!val) {
+//         return alternative;
+//     }
+//     return val;
+// }
 
 static PyMappingMethods IIMapMappingMethods {
     .mp_length = (lenfunc) IIMap_size,
     .mp_subscript = (binaryfunc) IIMap_getitem,
     .mp_ass_subscript = (objobjargproc) IIMap_setitem,
+};
+
+static struct PyMethodDef IIMap_Methods[] = {
+    // {"get", (PyCFunction)IIMap_get, METH_VARARGS, "similar to dict.get()"},
+    {NULL}
 };
 
 static PyTypeObject pyhash_IIMapType = {
@@ -94,7 +212,7 @@ static PyTypeObject pyhash_IIMapType = {
     0,                         /* tp_weaklistoffset */
     0,                         /* tp_iter */
     0,                         /* tp_iternext */
-    0,             /* tp_methods */
+    &IIMap_Methods[0],             /* tp_methods */
     0,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
