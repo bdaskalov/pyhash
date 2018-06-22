@@ -23,21 +23,6 @@ typedef struct {
     std::map<int64_t, int64_t>* map;
 } pyhash_IIMapObject;
 
-static PyObject *
-IIMap_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-    pyhash_IIMapObject *self;
-    std::printf("new\n");
-
-    self = (pyhash_IIMapObject *)type->tp_alloc(type, 0);
-    if (self != NULL) {
-        // self->map = new std::map<int64_t,int64_t>();
-        std::printf("map %p\n", self->map);
-    }
-
-    return (PyObject *)self;
-}
-
 static int *
 IIMap_init(pyhash_IIMapObject *self, PyObject *args, PyObject *kwds) 
 {
@@ -119,7 +104,7 @@ static PyTypeObject pyhash_IIMapType = {
     0,                         /* tp_dictoffset */
     (initproc) IIMap_init,     /* tp_init */
     0,                         /* tp_alloc */
-    IIMap_new,                 /* tp_new */
+    0,                 /* tp_new */
 };
 
 static PyMethodDef PyHashMethods[] = {
@@ -150,16 +135,3 @@ PyMODINIT_FUNC PyInit_pyhash(void)
     PyModule_AddObject(m, "IIMap", (PyObject*) &pyhash_IIMapType);
     return m;
 }
-
-// #include <boost/python.hpp>
-
-// char const* greet()
-// {
-//    return "hello, world";
-// }
-
-// BOOST_PYTHON_MODULE(pyhash_ext)
-// {
-//     using namespace boost::python;
-//     def("greet", greet);
-// }
