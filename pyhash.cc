@@ -70,8 +70,12 @@ public:
 
     virtual void put(PyObject *key, PyObject *val) {
         K intkey = from_pyobj<K>(key);
-        V intval = from_pyobj<V>(val);
-        _map[intkey] = intval;
+        if (val) {
+            V intval = from_pyobj<V>(val);
+            _map[intkey] = intval;
+        } else {
+            _map.erase(_map.find(intkey));
+        }
     }
 
 private:
@@ -111,8 +115,12 @@ public:
 
     virtual void put(PyObject *key, PyObject *val) {
         K intkey = from_pyobj<K>(key);
-        Py_INCREF(val);
-        _map[intkey] = val;
+        if (val) {
+            Py_INCREF(val);
+            _map[intkey] = val;
+        } else {
+            _map.erase(_map.find(intkey));
+        }
     }
 
 private:
