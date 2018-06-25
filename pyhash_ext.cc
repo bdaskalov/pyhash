@@ -403,7 +403,7 @@ static struct PyModuleDef greet =
     PyHashMethods
 };
 
-PyMODINIT_FUNC PyInit_pyhash(void)
+PyMODINIT_FUNC PyInit_pyhash_ext(void)
 {
     if (PyType_Ready(&pyhash_IIMapIteratorType) < 0)
         return NULL;

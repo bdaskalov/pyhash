@@ -8,8 +8,8 @@ setup(
     description='Python Package with Hello World C Extension',
     ext_modules=[
         Extension(
-            'pyhash',
-            sources=['pyhash.cc'],
+            'pyhash_ext',
+            sources=['pyhash_ext.cc'],
             # extra_compile_args=["-O0", "-g"],
             py_limited_api=True)
     ],
