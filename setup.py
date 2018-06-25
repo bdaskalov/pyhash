@@ -10,8 +10,7 @@ setup(
         Extension(
             'pyhash',
             sources=['pyhash.cc'],
-            #libraries=['boost_python-py35'],
-            extra_compile_flags=["-g"],
+            # extra_compile_args=["-O0", "-g"],
             py_limited_api=True)
     ],
 )
