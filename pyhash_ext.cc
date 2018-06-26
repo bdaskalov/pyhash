@@ -195,6 +195,8 @@ private:
 extern "C" {
 
 typedef struct {
+    int keytype;
+    int valtype;
     PyObject_HEAD
     Map* map;
 } pyhash_IIMapObject;
@@ -204,6 +206,9 @@ IIMap_init(pyhash_IIMapObject *self, PyObject *args, PyObject *kwds)
 {
     int keytype, valtype;
     PyArg_ParseTuple(args, "CC", &keytype, &valtype);
+    self->keytype = keytype;
+    self->valtype = valtype;
+
     if (keytype == 'L' && valtype == 'L') {
         self->map = new MapImpl<long long, long long>();
     } else if (keytype == 'L' && valtype == 'O') {
@@ -213,12 +218,15 @@ IIMap_init(pyhash_IIMapObject *self, PyObject *args, PyObject *kwds)
     } else if (keytype == 'I' && valtype == 'O') {
         self->map = new MapImpl<int, PyObject*>();
     }
+
+    PyObject_GC_Track((PyObject*) self);
     return 0;
 }
 
 static void
 IIMap_dealloc(pyhash_IIMapObject* self)
 {
+    PyObject_GC_UnTrack(self);
     delete self->map;
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -246,6 +254,32 @@ int IIMap_setitem(pyhash_IIMapObject *self, PyObject *key, PyObject *val) {
 
 static PyObject *
 IIMap_iter(pyhash_IIMapObject *self);
+
+int IIMap_traverse(pyhash_IIMapObject *self, visitproc visit, void *arg) {
+    if (self->keytype != 'O' && self->valtype != 'O') {
+        return 0;
+    }
+
+    MapIterator* it = self->map->makeIterator();
+    while (it->hasNext()) {
+        PyObject* key = it->next();
+        if (self->keytype == 'O') {
+            Py_VISIT(key);
+        }
+        if (self->valtype == 'O') {
+            PyObject* val = IIMap_getitem(self, key);
+            Py_VISIT(val);
+        }
+        // If key is not an object it was just created by it->next() and we need to decref
+        if (self->keytype != 'O') {
+            Py_DecRef(key);
+        }
+    }
+}
+static int
+IIMap_clear(pyhash_IIMapObject *self) {
+    //TODO
+}
 
 // Broken
 // static PyObject*
@@ -291,10 +325,10 @@ static PyTypeObject pyhash_IIMapType = {
     0,                         /* tp_getattro */
     0,                         /* tp_setattro */
     0,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC, /* tp_flags */
     "Int-to-int map",          /* tp_doc */
-    0,                         /* tp_traverse */
-    0,                         /* tp_clear */
+    (traverseproc) IIMap_traverse, /* tp_traverse */
+    (inquiry) IIMap_clear,     /* tp_clear */
     0,                         /* tp_richcompare */
     0,                         /* tp_weaklistoffset */
     (getiterfunc) IIMap_iter,  /* tp_iter */
